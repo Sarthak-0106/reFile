@@ -1,0 +1,6 @@
+
+# Add more files or directories to ignore
+node_modules
+target
+*.log
+.env
