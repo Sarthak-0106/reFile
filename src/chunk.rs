@@ -6,6 +6,7 @@ use std::io::{Read, Write, BufReader};
 use serde_json::json;
 use crate::cloud::upload_chunk_to_cloud;
 use crate::encryption::{decrypt, encrypt};
+use sha2::{Sha256, Digest};
 
 
 pub fn split_file(file_path: &str, output_dir: &str, optional_num_chunks: Option<usize>, encryption_key: &[u8]) -> std::io::Result<()> {
@@ -16,7 +17,7 @@ pub fn split_file(file_path: &str, output_dir: &str, optional_num_chunks: Option
         ));
     }
 
-    let input_file = File::open(file_path)?;
+    let mut input_file = File::open(file_path)?;
     let file_size = input_file.metadata()?.len();
 
     // Check if the file is empty
@@ -26,6 +27,14 @@ pub fn split_file(file_path: &str, output_dir: &str, optional_num_chunks: Option
             "Input file is empty",
         ));
     }
+
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    input_file.read_to_end(&mut buffer)?;
+    hasher.update(&buffer);
+    let checksum = format!("{:x}", hasher.finalize());
+
+    input_file = File::open(file_path)?;
 
     let num_chunks = optional_num_chunks.unwrap_or(5); // Default to 5 chunks
     if num_chunks <= 0 {
@@ -86,7 +95,8 @@ pub fn split_file(file_path: &str, output_dir: &str, optional_num_chunks: Option
     let manifest_file = OpenOptions::new().create(true).write(true).open(manifest_path)?;
     let json_manifest = json!({ 
         "extension": file_extension,
-        "chunks": manifest 
+        "chunks": manifest,
+        "checksum": checksum,
     });
     serde_json::to_writer_pretty(manifest_file, &json_manifest)?;
     Ok(())
@@ -101,6 +111,10 @@ pub fn reconstruct_file(manifest_path: &str, output_dir: &str, encryption_key: &
     let file_extension = manifest["extension"]
         .as_str()
         .ok_or("Failed to read file extension from manifest")?;
+
+    let original_checksum = manifest["checksum"]
+        .as_str()
+        .ok_or("Failed to read checksum from manifest")?;
 
     // Extract chunk URLs
     let chunk_urls = manifest["chunks"]
@@ -132,6 +146,24 @@ pub fn reconstruct_file(manifest_path: &str, output_dir: &str, encryption_key: &
         output_file.write_all(&decrypted_data)?;
     }
 
+    // Verify checksum of the reconstructed file
+    let mut reconstructed_file = File::open(&reconstructed_file_path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    reconstructed_file.read_to_end(&mut buffer)?;
+    hasher.update(&buffer);
+    let reconstructed_checksum = format!("{:x}", hasher.finalize());
+
+    if reconstructed_checksum == original_checksum {
+        println!("File reconstruction successful. Checksums match.");
+    } else {
+        return Err(format!(
+            "Checksum mismatch! Original: {}, Reconstructed: {}",
+            original_checksum, reconstructed_checksum
+        )
+        .into());
+    }
+    
     println!("File reconstruction complete: {}", reconstructed_file_path);
 
     Ok(())
