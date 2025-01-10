@@ -12,3 +12,6 @@ dotenv = "0.15.0" # For environment variables
 aes = "0.7.5"
 block-modes = "0.8.1"
 rand = "0.8.5"
+rayon = "1.7"                                             
+backoff = "0.4.0" 
+tokio = { version = "1.40", features = ["full"] }       
