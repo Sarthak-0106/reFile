@@ -61,6 +61,12 @@ pub fn split_file(
         .unwrap_or("txt")
         .to_string();
 
+    let original_file_name = Path::new(file_path)
+        .file_name()
+        .and_then(|os_str| os_str.to_str())
+        .unwrap_or("unknown")
+        .to_string();
+
     let mut manifest_chunks = vec![];
 
     // Split the file into chunks
@@ -94,6 +100,7 @@ pub fn split_file(
     let manifest_path = format!("{}/manifest.json", output_dir);
     let manifest_file = OpenOptions::new().create(true).write(true).open(&manifest_path)?;
     let json_manifest = json!({
+        "original_file_name": original_file_name,
         "extension": file_extension,
         "chunks": manifest_chunks,
         "checksum": checksum,
@@ -113,6 +120,9 @@ pub fn reconstruct_file(
     let manifest_file = File::open(manifest_path)?;
     let manifest: Value = serde_json::from_reader(manifest_file)?;
 
+    let original_file_name = manifest["original_file_name"]
+        .as_str()
+        .ok_or("Failed to read original file name from manifest")?;
     let file_extension = manifest["extension"]
         .as_str()
         .ok_or("Failed to read file extension from manifest")?;
@@ -124,7 +134,7 @@ pub fn reconstruct_file(
         .ok_or("Failed to read chunks from the manifest")?;
 
     let client = Client::new();
-    let reconstructed_file_path = format!("{}/reconstructed_file.{}", output_dir, file_extension);
+    let reconstructed_file_path = format!("{}/{}.{}", output_dir, original_file_name, file_extension);
     let mut output_file = File::create(&reconstructed_file_path)?;
 
     // Download and decrypt the chunks
