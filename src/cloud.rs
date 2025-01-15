@@ -1,19 +1,17 @@
 use std::env;
-use std::io::Read;
-use reqwest::blocking::{Client, multipart::Form};
-use serde_json;
+use reqwest::blocking::{Client, multipart::Part};
+use reqwest::blocking::multipart::Form;
 use backoff::{ExponentialBackoff, Error as BackoffError, retry};
-use rayon::prelude::*;
 use std::sync::Arc;
 
 pub fn upload_chunk_to_cloud_with_retries(
-    chunk_path: &str,
+    chunk_data: &[u8],  
+    file_name: &str,    
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let file_name_owned = file_name.to_owned();
+
     let retry_operation = || -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let client = Client::new();
-        let mut file = std::fs::File::open(chunk_path)?;
-        let mut data = Vec::new();
-        file.read_to_end(&mut data)?;
 
         let cloud_name = env::var("CLOUDINARY_CLOUD_NAME")?;
         let api_key = env::var("CLOUDINARY_API_KEY")?;
@@ -21,12 +19,16 @@ pub fn upload_chunk_to_cloud_with_retries(
         let upload_preset = env::var("CLOUDINARY_UPLOAD_PRESET")?;
         let url = format!("https://api.cloudinary.com/v1_1/{}/upload", cloud_name);
 
+        // Construct the form with chunk data
         let form = Form::new()
             .text("upload_preset", upload_preset)
             .text("api_key", api_key)
             .text("api_secret", api_secret)
             .text("resource_type", "raw")
-            .file("file", chunk_path)?;
+            .part(
+                "file",
+                Part::bytes(chunk_data.to_vec()).file_name(file_name_owned.clone()),
+            );
 
         let res = client.post(&url).multipart(form).send()?;
 
@@ -53,11 +55,12 @@ pub fn upload_chunk_to_cloud_with_retries(
         })?
 }
 
-pub fn parallel_upload_chunks(
-    chunk_paths: Vec<String>,
-) -> Vec<Result<String, Box<dyn std::error::Error + Send + Sync>>> {
-    chunk_paths
-        .par_iter()
-        .map(|chunk_path| upload_chunk_to_cloud_with_retries(chunk_path))
-        .collect()
-}
+
+// pub fn parallel_upload_chunks(
+//     chunks: Vec<(Vec<u8>, String)>, // Each chunk is a tuple of data and its file name
+// ) -> Vec<Result<String, Box<dyn std::error::Error + Send + Sync>>> {
+//     chunks
+//         .par_iter()
+//         .map(|(chunk_data, file_name)| upload_chunk_to_cloud_with_retries(chunk_data, file_name))
+//         .collect()
+// }

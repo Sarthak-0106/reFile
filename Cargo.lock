@@ -939,6 +939,7 @@ version = "0.1.0"
 dependencies = [
  "aes",
  "backoff",
+ "base64",
  "block-modes",
  "dotenv",
  "rand",
