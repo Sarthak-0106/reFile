@@ -55,12 +55,6 @@ pub fn split_file(
     let mut reader = BufReader::new(input_file);
     let mut buffer = vec![0; chunk_size];
 
-    let file_extension = Path::new(file_path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("txt")
-        .to_string();
-
     let original_file_name = Path::new(file_path)
         .file_name()
         .and_then(|os_str| os_str.to_str())
@@ -101,7 +95,6 @@ pub fn split_file(
     let manifest_file = OpenOptions::new().create(true).write(true).open(&manifest_path)?;
     let json_manifest = json!({
         "original_file_name": original_file_name,
-        "extension": file_extension,
         "chunks": manifest_chunks,
         "checksum": checksum,
     });
@@ -123,9 +116,6 @@ pub fn reconstruct_file(
     let original_file_name = manifest["original_file_name"]
         .as_str()
         .ok_or("Failed to read original file name from manifest")?;
-    let file_extension = manifest["extension"]
-        .as_str()
-        .ok_or("Failed to read file extension from manifest")?;
     let original_checksum = manifest["checksum"]
         .as_str()
         .ok_or("Failed to read checksum from manifest")?;
@@ -134,7 +124,7 @@ pub fn reconstruct_file(
         .ok_or("Failed to read chunks from the manifest")?;
 
     let client = Client::new();
-    let reconstructed_file_path = format!("{}/{}.{}", output_dir, original_file_name, file_extension);
+    let reconstructed_file_path = format!("{}/{}", output_dir, original_file_name);
     let mut output_file = File::create(&reconstructed_file_path)?;
 
     // Download and decrypt the chunks
